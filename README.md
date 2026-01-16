@@ -1,21 +1,21 @@
-# create-juno
+# junoworks/create
 
 CLI tool to scaffold Juno projects.
 
 ## Usage
 
 ```bash
-npx github:junoworks/create-juno <export-id> [folder-name]
+npx github:junoworks/create <export-id> [folder-name]
 ```
 
 ### Examples
 
 ```bash
 # Download and extract a Juno project
-npx github:junoworks/create-juno quickly-light-mouse
+npx github:junoworks/create quickly-light-mouse
 
 # Specify a custom folder name
-npx github:junoworks/create-juno quickly-light-mouse my-awesome-app
+npx github:junoworks/create quickly-light-mouse my-awesome-app
 ```
 
 ## What is Juno?
@@ -27,5 +27,5 @@ visually using a drag-and-drop interface, design multiple pages/frames, edit com
 
 1. Create your project in [Juno](https://junodesign.app)
 2. Export your project (this generates a unique export ID)
-3. Use `npx github:junoworks/create-juno <export-id>` to download and scaffold the project
+3. Use `npx github:junoworks/create <export-id>` to download and scaffold the project
 4. Open it in your IDE or task your AI agent to start building!
