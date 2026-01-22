@@ -8,15 +8,16 @@ import { promisify } from "node:util";
 
 const SUPABASE_URL = "https://kgfipbdrigsksyfqdhrm.supabase.co";
 const STORAGE_BUCKET = "exports";
-const TEMPLATE_URL = "https://github.com/junoworks/juno-template/archive/refs/heads/main.zip";
+const TEMPLATE_URL =
+  "https://github.com/junoworks/juno-template/archive/refs/heads/main.zip";
 
 const execAsync = promisify(exec);
 const args = process.argv.slice(2);
 
 if (args.length === 0) {
-	console.error("Usage: npx create-juno <export-id> [directory-name]");
-	console.error("\nExample: npx create-juno quickly-light-mouse");
-	process.exit(1);
+  console.error("Usage: npx create-juno <export-id> [directory-name]");
+  console.error("\nExample: npx create-juno quickly-light-mouse");
+  process.exit(1);
 }
 
 const id = args[0];
@@ -31,138 +32,206 @@ const exportZipPath = path.resolve(process.cwd(), `${id}.zip`);
 const targetPath = path.resolve(process.cwd(), targetDir);
 
 try {
-	if (fs.existsSync(targetPath)) {
-		console.error(`\nERR Directory already exists: ${targetPath}`);
-		console.error("    Please use a different name or remove the existing directory.");
-		process.exit(1);
-	}
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  let isUpdate = false;
 
-	console.log("--> Target path:", targetPath);
+  if (fs.existsSync(targetPath)) {
+    console.log(`\n--> Directory already exists: ${targetPath}`);
+    const updateAnswer = await new Promise((resolve) => {
+      rl.question(
+        "Would you like to update the existing project? (Y/n): ",
+        (ans) => {
+          resolve(ans.toLowerCase().trim());
+        },
+      );
+    });
 
-	const templateResponse = await fetch(TEMPLATE_URL);
+    if (updateAnswer === "n" || updateAnswer === "no") {
+      rl.close();
+      console.error(
+        "\nPlease use a different directory name or remove the existing directory.",
+      );
+      process.exit(1);
+    }
 
-	if (!templateResponse.ok) {
-		console.error("\nERR Failed to fetch template");
-		console.log(templateResponse.status, TEMPLATE_URL);
-		process.exit(1);
-	}
+    isUpdate = true;
+    console.log("--> Updating existing project...");
+  }
 
-	console.log(templateResponse.status, TEMPLATE_URL);
+  console.log("--> Target path:", targetPath);
 
-	const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
-	fs.writeFileSync(templateZipPath, templateBuffer);
+  // For updates, skip template download and just fetch the export
+  if (isUpdate) {
+    const exportResponse = await fetch(exportUrl);
 
-	fs.mkdirSync(targetPath, { recursive: true });
+    if (!exportResponse.ok) {
+      rl.close();
+      console.error("\nERR Failed to fetch export");
+      console.log(exportResponse.status, exportUrl);
+      process.exit(1);
+    }
 
-	const { stdout: templateUnzipOut, stderr: templateUnzipErr } = await execAsync(
-		`unzip -q "${templateZipPath}" -d "${targetPath}"`,
-	);
-	if (templateUnzipOut) console.log("-->", templateUnzipOut);
-	if (templateUnzipErr) console.error("ERR", templateUnzipErr);
-	const extractedDir = path.join(targetPath, "juno-template-main");
+    console.log(exportResponse.status, exportUrl);
 
-	if (fs.existsSync(extractedDir)) {
-		const files = fs.readdirSync(extractedDir);
-		for (const file of files) {
-			const sourcePath = path.join(extractedDir, file);
-			const destPath = path.join(targetPath, file);
-			fs.renameSync(sourcePath, destPath);
-		}
-		fs.rmdirSync(extractedDir);
-	} else {
-		const targetContents = fs.readdirSync(targetPath);
-		console.error("\nERR Extracted directory not found. Target path contents:", targetContents);
-		fs.unlinkSync(templateZipPath);
-		process.exit(1);
-	}
+    const exportBuffer = Buffer.from(await exportResponse.arrayBuffer());
+    fs.writeFileSync(exportZipPath, exportBuffer);
 
-	fs.unlinkSync(templateZipPath);
+    const { stdout: exportUnzipOut, stderr: exportUnzipErr } = await execAsync(
+      `unzip -o -q "${exportZipPath}" -d "${targetPath}"`,
+    );
+    if (exportUnzipOut) console.log("-->", exportUnzipOut);
+    if (exportUnzipErr) console.error("ERR", exportUnzipErr);
+    console.log(" OK Project updated with latest export");
 
-	const exportResponse = await fetch(exportUrl);
+    fs.unlinkSync(exportZipPath);
+    rl.close();
 
-	if (!exportResponse.ok) {
-		console.error("\nERR Failed to fetch export");
-		console.log(exportResponse.status, exportUrl);
-		process.exit(1);
-	}
+    console.log("\nUpdate complete! Your project files have been refreshed.");
+    console.log(`\ncd ${targetDir}`);
+    console.log("npm run dev");
+    process.exit(0);
+  }
 
-	console.log(exportResponse.status, exportUrl);
+  // Fresh setup continues below
+  fs.mkdirSync(targetPath, { recursive: true });
 
-	const exportBuffer = Buffer.from(await exportResponse.arrayBuffer());
-	fs.writeFileSync(exportZipPath, exportBuffer);
+  const templateResponse = await fetch(TEMPLATE_URL);
 
-	const { stdout: exportUnzipOut, stderr: exportUnzipErr } = await execAsync(
-		`unzip -o -q "${exportZipPath}" -d "${targetPath}"`,
-	);
-	if (exportUnzipOut) console.log("-->", exportUnzipOut);
-	if (exportUnzipErr) console.error("ERR", exportUnzipErr);
-	console.log(" OK Exported");
+  if (!templateResponse.ok) {
+    rl.close();
+    console.error("\nERR Failed to fetch template");
+    console.log(templateResponse.status, TEMPLATE_URL);
+    process.exit(1);
+  }
 
-	fs.unlinkSync(exportZipPath);
+  console.log(templateResponse.status, TEMPLATE_URL);
 
-	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
+  fs.writeFileSync(templateZipPath, templateBuffer);
 
-	const installAnswer = await new Promise((resolve) => {
-		rl.question("\nInstall npm dependencies? (Y/n): ", (ans) => {
-			resolve(ans.toLowerCase().trim());
-		});
-	});
+  const { stdout: templateUnzipOut, stderr: templateUnzipErr } =
+    await execAsync(`unzip -q "${templateZipPath}" -d "${targetPath}"`);
+  if (templateUnzipOut) console.log("-->", templateUnzipOut);
+  if (templateUnzipErr) console.error("ERR", templateUnzipErr);
+  const extractedDir = path.join(targetPath, "juno-template-main");
 
-	if (installAnswer === "n" || installAnswer === "no") {
-		rl.close();
-		console.log("Then it's all. To finish setup manually:");
-		console.log(`\ncd ${targetDir}`);
-		console.log("npm install");
-		console.log("npm run dev");
-		process.exit(0);
-	}
+  if (fs.existsSync(extractedDir)) {
+    const files = fs.readdirSync(extractedDir);
+    for (const file of files) {
+      const sourcePath = path.join(extractedDir, file);
+      const destPath = path.join(targetPath, file);
+      fs.renameSync(sourcePath, destPath);
+    }
+    fs.rmdirSync(extractedDir);
+  } else {
+    const targetContents = fs.readdirSync(targetPath);
+    console.error(
+      "\nERR Extracted directory not found. Target path contents:",
+      targetContents,
+    );
+    fs.unlinkSync(templateZipPath);
+    rl.close();
+    process.exit(1);
+  }
 
-	const { stdout: installStdout, stderr: installStderr } = await execAsync("npm install --fund false --audit false", {
-		cwd: targetPath,
-	});
-	if (installStdout) console.log(installStdout);
-	if (installStderr) console.err(installStderr);
+  fs.unlinkSync(templateZipPath);
 
-	const devAnswer = await new Promise((resolve) => {
-		rl.question("Start dev server? (Y/n): ", (ans) => {
-			resolve(ans.toLowerCase().trim());
-		});
-	});
+  const exportResponse = await fetch(exportUrl);
 
-	if (devAnswer === "n" || devAnswer === "no") {
-		rl.close();
-		console.log("Then it's all. To start the dev server, run:");
-		console.log(`\ncd ${targetDir}`);
-		console.log("npm run dev");
-		process.exit(0);
-	}
+  if (!exportResponse.ok) {
+    rl.close();
+    console.error("\nERR Failed to fetch export");
+    console.log(exportResponse.status, exportUrl);
+    process.exit(1);
+  }
 
-	const devProcess = spawn("npm", ["run", "dev"], { cwd: targetPath, stdio: "inherit", shell: true });
-	console.log(" OK Dev server process spawned, PID:", devProcess.pid);
+  console.log(exportResponse.status, exportUrl);
 
-	devProcess.on("error", (err) => {
-		console.error("ERR", err.message);
-		console.error("ERR", err.stack);
-		process.exit(1);
-	});
+  const exportBuffer = Buffer.from(await exportResponse.arrayBuffer());
+  fs.writeFileSync(exportZipPath, exportBuffer);
 
-	devProcess.on("exit", (code, signal) => {
-		console.log(`\n[DEBUG] Dev server exited with code: ${code}, signal: ${signal}`);
-	});
+  const { stdout: exportUnzipOut, stderr: exportUnzipErr } = await execAsync(
+    `unzip -o -q "${exportZipPath}" -d "${targetPath}"`,
+  );
+  if (exportUnzipOut) console.log("-->", exportUnzipOut);
+  if (exportUnzipErr) console.error("ERR", exportUnzipErr);
+  console.log(" OK Exported");
+
+  fs.unlinkSync(exportZipPath);
+
+  const installAnswer = await new Promise((resolve) => {
+    rl.question("\nInstall npm dependencies? (Y/n): ", (ans) => {
+      resolve(ans.toLowerCase().trim());
+    });
+  });
+
+  if (installAnswer === "n" || installAnswer === "no") {
+    rl.close();
+    console.log("Then it's all. To finish setup manually:");
+    console.log(`\ncd ${targetDir}`);
+    console.log("npm install");
+    console.log("npm run dev");
+    process.exit(0);
+  }
+
+  const { stdout: installStdout, stderr: installStderr } = await execAsync(
+    "npm install --fund false --audit false",
+    {
+      cwd: targetPath,
+    },
+  );
+  if (installStdout) console.log(installStdout);
+  if (installStderr) console.err(installStderr);
+
+  const devAnswer = await new Promise((resolve) => {
+    rl.question("Start dev server? (Y/n): ", (ans) => {
+      resolve(ans.toLowerCase().trim());
+    });
+  });
+
+  if (devAnswer === "n" || devAnswer === "no") {
+    rl.close();
+    console.log("Then it's all. To start the dev server, run:");
+    console.log(`\ncd ${targetDir}`);
+    console.log("npm run dev");
+    process.exit(0);
+  }
+
+  const devProcess = spawn("npm", ["run", "dev"], {
+    cwd: targetPath,
+    stdio: "inherit",
+    shell: true,
+  });
+  console.log(" OK Dev server process spawned, PID:", devProcess.pid);
+
+  devProcess.on("error", (err) => {
+    console.error("ERR", err.message);
+    console.error("ERR", err.stack);
+    process.exit(1);
+  });
+
+  devProcess.on("exit", (code, signal) => {
+    console.log(
+      `\n[DEBUG] Dev server exited with code: ${code}, signal: ${signal}`,
+    );
+  });
 } catch (err) {
-	console.error("\n[ERROR] Unexpected!");
-	console.error("Error message:", err.message);
-	console.error("Error stack:", err.stack);
-	console.error("Error name:", err.name);
+  console.error("\n[ERROR] Unexpected!");
+  console.error("Error message:", err.message);
+  console.error("Error stack:", err.stack);
+  console.error("Error name:", err.name);
 
-	console.log("\nCleaning up temporary files...");
-	if (fs.existsSync(templateZipPath)) {
-		console.log("Deleting:", templateZipPath);
-		fs.unlinkSync(templateZipPath);
-	}
-	if (fs.existsSync(exportZipPath)) {
-		console.log("Deleting:", exportZipPath);
-		fs.unlinkSync(exportZipPath);
-	}
-	process.exit(1);
+  console.log("\nCleaning up temporary files...");
+  if (fs.existsSync(templateZipPath)) {
+    console.log("Deleting:", templateZipPath);
+    fs.unlinkSync(templateZipPath);
+  }
+  if (fs.existsSync(exportZipPath)) {
+    console.log("Deleting:", exportZipPath);
+    fs.unlinkSync(exportZipPath);
+  }
+  process.exit(1);
 }
